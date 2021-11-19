@@ -10,7 +10,7 @@
 
 <body class="d-flex row-direction">
 	<div class="mask">
-		<h1 style="color:white;margin:15px">Loading...</h1>
+		<h1 style="color:white;margin:15px">Loading...0%</h1>
 	</div>
 	<div id="info">
 		<p>控制面板說明<p>
@@ -124,6 +124,8 @@
 		let restorestate = () => {
 			move2Target(tmpTarget, tmpZoom)
 		}
+
+        let dlMask = document.querySelector('.mask')
 
 		function move2Target(target = new THREE.Vector3(0, 0, 0), zoom = 1) {
 
@@ -372,10 +374,15 @@
 			function onProgress(xhr) {
 
 				if (xhr.lengthComputable) {
-
+					
 					const percentComplete = xhr.loaded / xhr.total * 100;
-					console.log(Math.round(percentComplete, 2) + '% downloaded');
+                    let percentRounded = Math.round(percentComplete, 2)
+                    console.log(percentRounded + '% downloaded');
+                    dlMask.children[0].innerText = 'Loading...' + percentRounded + '% downloaded'
 
+					if (percentRounded == 100) {
+                        dlMask.children[0].innerText = 'initializing...'
+                    }
 				}
 
 			}
@@ -407,12 +414,14 @@
 				なごみ: ['eye_relaxed_left', 'eye_relaxed_right'],
                 じと目: ['eye_unimpressed_left', 'eye_unimpressed_right'],
 				じと: ['eye_unimpressed_left', 'eye_unimpressed_right'],
+                下まつ毛上げ: ['eye_raised_lower_eyelid_left', 'eye_raised_lower_eyelid_right'],
 				下瞼上げ: ['eye_raised_lower_eyelid_left', 'eye_raised_lower_eyelid_right'],
 				びっくり: ['eye_surprised_left', 'eye_surprised_right'],
 				瞳小: ['iris_small_left', 'iris_small_right'],
 
 				困る: ['eyebrow_troubled_left', 'eyebrow_troubled_right'],
 				困り: ['eyebrow_troubled_left', 'eyebrow_troubled_right'],
+                困惑: ['eyebrow_troubled_left', 'eyebrow_troubled_right'],
 				eyebrowtroubled: ['eyebrow_troubled_left', 'eyebrow_troubled_right'],
                 怒る: ['eyebrow_angry_left', 'eyebrow_angry_right'],
                 怒り: ['eyebrow_angry_left', 'eyebrow_angry_right'],
@@ -433,7 +442,11 @@
 				お: ['mouth_ooo'],
 				'▲': ['mouth_delta'],
 				'はんっ！': ['mouth_smirk'],
-				口角上げ: ['mouth_raised_corner_left', 'mouth_lowered_corner_right'],
+                口角左上げ: ['mouth_raised_corner_left'],
+                口角右上げ: ['mouth_raised_corner_right'],
+				口角上げ: ['mouth_raised_corner_left', 'mouth_raised_corner_right'],
+				口角左下げ: ['mouth_lowered_corner_left'],
+                口角右下げ: ['mouth_lowered_corner_right'],
 				口角下げ: ['mouth_lowered_corner_left', 'mouth_lowered_corner_right'],
 			};
  
@@ -446,7 +459,9 @@
 				const controls = {}
 
                 const mgui = new GUI()
-				const remapMorph = mgui.addFolder('stdMorph')
+				
+                const morphTools = mgui.addFolder('Morph Tools')
+                const remapMorph = mgui.addFolder('Standard Morph')
 
 				const gui = new GUI();
 				const characters = gui.addFolder('Characters')
@@ -556,22 +571,82 @@
 
 						inputfile.click()
 					}
+
+					controls.morphUpload = function () {
+
+					}
+
+                    controls.morphDownload = function () {
+                        let data = {}
+                        let order = 0
+                        for (let key in controls.standardlist) {
+                            data[order] = controls.standardlist[key]
+                            order++
+                        }
+
+                        let downloadLink = document.createElement('a')
+                        let blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+                        downloadLink.href = URL.createObjectURL(blob)
+                        downloadLink.download = 'data'
+                        downloadLink.click()
+					}
+
+					controls.morphPrint = function () {
+						let text = ''
+						for (let key in controls.standardlist) {
+                            text = text + key + ':' + controls.standardlist[key]+'\n'
+                        }
+						alert(text)
+						console.log(text)
+                    }
+
+					controls.autoIdentify = function () {
+						let skeys = Object.keys(controls.standardlist)
+                        let keys = Object.keys(dictionary)
+
+                        for (let i = 0; i < skeys.length; i++) {
+                            mgui.__folders['Standard Morph'].__controllers[i].setValue(-1)
+						}
+
+                        for (let i = 0; i < keys.length; i++) {
+                            let key = keys[i]
+
+							mesh.morphTargetInfluences[i] = controls.dictionary[key]
+                            let values = morphConvertor[key]
+
+							if (values != null) {
+                                values.forEach((v) => {
+                                    let index = skeys.findIndex(x => x == v)
+
+                                    mgui.__folders['Standard Morph'].__controllers[index].setValue(i)
+                                })
+                            }
+						}
+
+                    }
 				}
 
 
-                function initMorphGui() {
+                function initStdMorph() {
 
                     while (remapMorph.__controllers.length > 0) {
                         remapMorph.remove(remapMorph.__controllers[0])
 					}
 
 					for (let key in controls.standardlist) {
-                        remapMorph.add(controls.standardlist, key).onChange(() => {
-                            
+                        controls.standardlist[key] = -1
+                        remapMorph.add(controls.standardlist, key).onChange(() => {  
                         })
                     }
-                    console.log(mgui)
 				}
+
+				function initMorphTools() {
+					
+                    morphTools.add(controls, 'morphPrint').name('print')
+					morphTools.add(controls, 'morphUpload').name('upload')
+                    morphTools.add(controls, 'morphDownload').name('download')
+                    morphTools.add(controls, 'autoIdentify').name('Auto Identify')
+                }
 
                 let setData = (data) => {
                     
@@ -721,21 +796,10 @@
 
 					let morphKey = (code) => {
 						if (code == 115 || code == 83) {
-							let data = {}
-							let order = 0
-							for (let key in controls.standardlist) {
-								data[order] = controls.standardlist[key]
-								order++
-                            }
-
-                            let downloadLink = document.createElement('a')
-                            let blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-                            downloadLink.href = URL.createObjectURL(blob)
-                            downloadLink.download = 'data'
-                            downloadLink.click()
+							controls.morphDownload()
 						}
 						else if (code == 112 || code == 80) {
-							console.log(controls.standardlist)
+							controls.morphPrint()
                         }
 					}
 
@@ -749,7 +813,6 @@
                         }
                         else if (code == 97 || code == 65) {
                             controls.characters = (controls.characters + modelFile.length - 1) % modelFile.length
-                            console.log(controls.characters)
                             onChangeCharacter()
                         }
                         else if (code == 100 || code == 68) {
@@ -759,7 +822,6 @@
                         else if (code == 49) {
                             let order = getOrder(rendermode, isleftEye)
                             setState((order + 7) % 8)
-                            console.log(order)
                         }
                         else if (code == 50) {
                             let order = getOrder(rendermode, isleftEye)
@@ -818,8 +880,6 @@
 						order++
 					}
 
-
-					console.log(morphs)
 				}
 
 				function initTools() {
@@ -834,13 +894,12 @@
 				}
 
 				let setMaskEnable = (option) => {
-					let ele = document.querySelector('.mask')
 
 					if (option) {
-						ele.style.display = 'block'
+                        dlMask.style.display = 'flex'
 					}
 					else {
-						ele.style.display = 'none'
+                        dlMask.style.display = 'none'
 					}
 				}
 
@@ -866,7 +925,7 @@
 						}
 						//console.log(mesh)
 						initMorphs();
-                        initMorphGui()
+                        initStdMorph()
 						onChangeMorph();
 						onChangePose();
 
@@ -1140,28 +1199,13 @@
 				}
 
 				function onChangeMorph() {
-                    mgui.__folders.stdMorph.__controllers.forEach((controller) => {
-                        controller.setValue(-1)
-					})
 
 					let keys = Object.keys(dictionary)
-					let skeys = Object.keys(controls.standardlist)
 
 					for (let i = 0; i < keys.length; i++) {
 						let key = keys[i]
 
 						mesh.morphTargetInfluences[i] = controls.dictionary[key]
-
-						let values = morphConvertor[key]
-						
-						if (values == null) {
-							continue
-                        }
-                        
-						values.forEach((v) => {
-							let index = skeys.findIndex(x => x == v)
-                            //mgui.__folders.stdMorph.__controllers[index].setValue(controls.dictionary[key])
-                        })
 					}
                 } 
 
@@ -1185,14 +1229,16 @@
 
 				initPoses();
 				initMorphs();
-                initMorphGui()
+                initStdMorph()
 				initOpertation();
 				initTools();
+                initMorphTools()
 
 				characters.open();
 				operations.open();
 				morphs.open();
-                remapMorph.open()
+				remapMorph.open()
+				morphTools.open()
 
 				onChangeCharacter()
 				onChangeOperation()
@@ -1342,16 +1388,18 @@
 			border: 5px solid lightgrey;
 		}
 
-		.mask {
-			width: 100vw;
-			height: 100vh;
-			background-color: rgba(0,0,0,0.5);
-			position: absolute;
-			left: 0px;
-			top: 0px;
-			display: none;
-			z-index: 3;
-		}
+        .mask {
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0,0,0,0.5);
+            position: absolute;
+            left: 0px;
+            top: 0px;
+            display: none;
+            z-index: 3;
+            justify-content: center;
+            align-items: center;
+        }
 
 		.grid4 {
 			position: absolute;
